@@ -1,0 +1,100 @@
+version: '3.8'
+
+services:
+  simulation:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.simulation
+    environment:
+      - POSTGRES_URL=postgresql://eddt:eddt@postgres:5432/eddt
+      - REDIS_URL=redis://redis:6379
+      - TIER1_URL=http://tier1:8001
+      - TIER2_URL=http://tier2:8002
+      - SIMULATION_TICK_DURATION_MINUTES=15
+      - WORKING_HOURS_ONLY=true
+    volumes:
+      - ./models:/app/models
+      - ./decision_cache.db:/app/decision_cache.db
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      tier1:
+        condition: service_started
+      tier2:
+        condition: service_started
+
+  tier1:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.tier1
+    environment:
+      - TIER1_MODEL_PATH=/app/models/qwen2.5-1.5b-instruct-q4_k_m.gguf
+      - TIER1_N_CTX=2048
+      - TIER1_N_GPU_LAYERS=-1
+    volumes:
+      - ./models:/app/models
+    ports:
+      - "8001:8001"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  tier2:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.tier2
+    environment:
+      - TIER2_MODEL_PATH=/app/models/qwen2.5-7b-instruct-q4_k_m.gguf
+      - TIER2_N_CTX=4096
+      - TIER2_N_GPU_LAYERS=-1
+    volumes:
+      - ./models:/app/models
+    ports:
+      - "8002:8002"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=eddt
+      - POSTGRES_PASSWORD=eddt
+      - POSTGRES_DB=eddt
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eddt"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  redis_data:

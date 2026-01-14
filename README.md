@@ -1,224 +1,170 @@
-# EDDT - Engineering Department Digital Twin
+# EDDT: Engineering Department Digital Twin
 
-A simulation framework for modeling engineering teams and CAD/PDM/PLM workflows using LLM-powered agents.
+A transparent, debuggable simulation framework using **Mesa** for agent-based modeling and **SimPy** for resource contention.
 
-## Overview
+## Why Mesa/SimPy?
 
-EDDT (Engineering Department Digital Twin) is a novel simulation framework that uses LLM-powered agents to model engineering teams interacting with CAD/PDM/PLM systems. Unlike traditional digital twins that model physical products, EDDT models the **organizational dynamics** of product development—predicting project timelines, calculating tool ROI, identifying workflow bottlenecks, and enabling "what-if" scenario planning.
-
-## Key Features
-
-- **LLM-Powered Agents**: Agents make decisions using a hierarchical LLM architecture (local models for 95%+ of decisions)
-- **State Machine-Based Agents**: Formal state machines for explicit agent behavior modeling
-- **Tick-Driven Simulation**: Event-driven simulation with 15-minute ticks
-- **Tool Simulation Layer**: Realistic CAD/PLM tool interaction simulation
-- **Cost-Effective**: Uses local lightweight LLMs to reduce costs from ~$3K to ~$15 per simulation run
-
-## Architecture
-
-The system consists of:
-
-- **Simulation Service**: Main Python application with FastAPI server
-- **Tier 1 LLM Service**: Lightweight model (1-3B) for routine decisions
-- **Tier 2 LLM Service**: Medium model (7-13B) for contextual decisions
-- **PostgreSQL**: Metrics and simulation state storage
-- **Redis**: Decision caching and event queue
+| Factor | Traditional (Custom) | Mesa/SimPy |
+|--------|---------------------|------------|
+| Learning curve | Steep | Gentle (plain Python) |
+| Debug transparency | Hard | Easy (step through) |
+| Iteration speed | Slow | Fast |
+| Jupyter support | Limited | Native |
+| Lines of code | ~2000+ | ~500 |
 
 ## Quick Start
 
-### Prerequisites
-
-- Docker and Docker Compose
-- NVIDIA GPU with CUDA support (for LLM services)
-- At least 10GB VRAM (for Tier 1 + Tier 2 models)
-
-### Setup
-
-1. Clone the repository:
 ```bash
-cd raps-twin
-```
-
-2. Download LLM models:
-```bash
-# Option 1: Use setup script (recommended)
-bash scripts/setup_models.sh  # Linux/Mac
-# or
-powershell scripts/setup_models.ps1  # Windows
-
-# Option 2: Manual download
-mkdir -p models
-# Download from HuggingFace:
-# - Qwen/Qwen2.5-1.5B-Instruct-GGUF (qwen2.5-1.5b-instruct-q4_k_m.gguf)
-# - Qwen/Qwen2.5-7B-Instruct-GGUF (qwen2.5-7b-instruct-q4_k_m.gguf)
-```
-
-3. Configure environment:
-```bash
-cp .env.example .env
-# Edit .env with your settings
-```
-
-4. Start services:
-```bash
-docker-compose up -d
-```
-
-5. Access the API:
-```bash
-# Both endpoints are available
-curl http://localhost:8000/health
-curl http://localhost:8000/api/v1/health
-```
-
-## Development Setup
-
-### Local Development (without Docker)
-
-1. Install dependencies:
-```bash
+# Install dependencies
 pip install -r requirements.txt
-pip install -r requirements-dev.txt
+
+# Run simulation
+python run_simulation.py
+
+# Or use CLI
+python -m eddt.cli --days 5
 ```
 
-2. Set up environment:
+## Usage
+
+### Python API
+
+```python
+from eddt.model import EngineeringDepartment
+
+# Create model with default config
+model = EngineeringDepartment()
+
+# Run for 5 simulated days
+results = model.run(days=5)
+
+# Explore results
+print(results['summary'])
+```
+
+### Step Through Manually
+
+```python
+model = EngineeringDepartment()
+
+# Step one tick at a time
+model.step()
+print(f"Time: {model.current_time}")
+
+for agent in model.agents:
+    print(f"  {agent.name}: {agent.status.value}")
+```
+
+### Custom Configuration
+
+```python
+config = {
+    'simulation': {
+        'start_date': '2025-01-15T08:00:00',
+        'tick_minutes': 15,
+        'work_hours': {'start': 8, 'end': 17},
+    },
+    'agents': [
+        {'name': 'Alice', 'role': 'senior_designer', 'count': 1},
+        {'name': 'Bob', 'role': 'junior_designer', 'count': 3},
+    ],
+    'projects': [
+        {
+            'name': 'Product Launch',
+            'tasks': [
+                {'type': 'part_design', 'count': 10, 'hours': 8},
+                {'type': 'drawing', 'count': 10, 'hours': 4},
+            ]
+        }
+    ],
+}
+
+model = EngineeringDepartment(config=config)
+results = model.run(days=10)
+```
+
+### YAML Configuration
+
 ```bash
-cp .env.example .env
-# Edit .env to use local models (set TIER1_URL and TIER2_URL to empty)
+python -m eddt.cli --config scenarios/baseline.yaml --days 10
 ```
-
-3. Run tests:
-```bash
-pytest
-```
-
-4. Run the simulation service:
-```bash
-uvicorn eddt.main:app --reload
-```
-
-## TUI Dashboard
-
-You can run a Rich-based TUI to visualize simulation speed, time, agent states, and metrics.
-
-### Server mode (observe live server state)
-
-1. Start the API server:
-```bash
-uvicorn eddt.main:app --reload
-```
-2. Create, start, and observe a simulation from the TUI:
-```bash
-eddt-tui --server http://localhost:8000 --hours 4 --agents 3 --start
-```
-3. Or observe an existing simulation:
-```bash
-eddt-tui --server http://localhost:8000 --sim-id <simulation_id>
-```
-
-### Local mode (self-contained demo)
-```bash
-eddt-tui --hours 4 --agents 3 --tick 15 --seed 42
-```
-
-Endpoints used by the TUI (server mode):
-- `POST /api/v1/simulations` – create
-- `POST /api/v1/simulations/{id}/start` – start
-- `GET /api/v1/simulations/{id}` – status + current_time
-- `GET /api/v1/simulations/{id}/agents` – live agent states
-- `GET /api/v1/simulations/{id}/metrics` – live metrics
-- `POST /api/v1/simulations/{id}/stop` – stop
 
 ## Project Structure
 
 ```
-raps-twin/
-├── src/eddt/           # Main application code
-│   ├── agents/         # Agent system with state machines
-│   ├── llm/            # LLM infrastructure (inference, routing, cache)
-│   ├── simulation/     # Simulation engine, environment, metrics
-│   ├── tools/          # Tool simulation layer
-│   └── api/            # FastAPI routes and models
-├── tests/              # Test suite
-├── docker/             # Dockerfiles and service scripts
-└── docker-compose.yml  # Docker Compose configuration
+eddt/
+├── eddt/
+│   ├── __init__.py
+│   ├── model.py          # Main Mesa model
+│   ├── agents.py         # Engineer agents
+│   ├── tasks.py          # Task definitions
+│   ├── resources.py      # SimPy resources
+│   ├── llm.py            # LLM decision maker
+│   ├── metrics.py        # Data collection
+│   └── cli.py            # Command-line interface
+├── notebooks/
+│   └── 01_basic_simulation.ipynb
+├── scenarios/
+│   ├── baseline.yaml
+│   └── add_designer.yaml
+├── requirements.txt
+└── run_simulation.py
 ```
 
-## Agent State Machine
+## Agent Roles
 
-Agents use formal state machines with the following states:
+- `junior_designer` - Part design, drawings
+- `senior_designer` - Complex assemblies, reviews
+- `mechanical_engineer` - Simulation, FEA
+- `reviewer` - Design reviews
+- `plm_admin` - PLM/release workflows
 
-- `offline`: Agent not working (outside work hours)
-- `idle`: Agent available but no current task
-- `working`: Agent actively working on a task
-- `blocked`: Agent waiting for external input/dependency
-- `in_meeting`: Agent in a meeting (interrupt)
-- `on_break`: Agent on break (lunch, coffee, etc.)
+## Task Types
 
-See the architecture documentation for the complete state transition diagram.
+- `part_design` - CAD part creation
+- `assembly` - Assembly design
+- `drawing` - Technical drawings
+- `review` - Design review
+- `simulation` - FEA/CFD analysis
+- `release` - Release workflow
 
-## API Endpoints
+## LLM Integration
 
-- `GET /health` - Health check
-- `POST /simulations` - Start new simulation
-- `GET /simulations/{id}` - Get simulation status
-- `GET /simulations/{id}/metrics` - Get simulation metrics
-- `POST /agents` - Create agent
+By default, EDDT uses rule-based decision making for speed. To enable LLM:
 
-## Configuration
+```python
+model = EngineeringDepartment(config={
+    'llm': {
+        'use_llm': True,
+        'tier1_model': 'qwen2.5:1.5b',
+        'tier2_model': 'qwen2.5:7b',
+    }
+})
+```
 
-See `.env.example` for all configuration options. Key settings:
+Requires [Ollama](https://ollama.ai/) running locally:
 
-- `SIMULATION_TICK_DURATION_MINUTES`: Duration of each simulation tick (default: 15)
-- `TIER1_MODEL_PATH`: Path to Tier 1 LLM model
-- `TIER2_MODEL_PATH`: Path to Tier 2 LLM model
-- `POSTGRES_URL`: PostgreSQL connection string
-- `REDIS_URL`: Redis connection string
+```bash
+ollama serve
+ollama pull qwen2.5:1.5b
+ollama pull qwen2.5:7b
+```
 
-### Logging
-- `LOG_LEVEL`: e.g., `DEBUG`, `INFO`, `WARNING` (default: `INFO`)
-- `LOG_JSON`: `true` to emit JSON logs, `false` for plain text (default: `true`)
+## Jupyter Notebooks
+
+```bash
+pip install jupyter
+jupyter notebook notebooks/
+```
+
+## Output
+
+Results include:
+- **Summary**: Tasks completed, completion rate
+- **Agent metrics**: Utilization, tasks completed per agent
+- **Model metrics**: Time series of utilization, task progress
+- **Bottlenecks**: Identified workflow bottlenecks
 
 ## License
 
-Apache 2.0
-
-## Architecture Diagrams
-
-### System Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    EDDT Platform                            │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐    │
-│  │  Simulation  │  │   Tier 1     │  │   Tier 2     │    │
-│  │   Service    │  │   LLM        │  │   LLM         │    │
-│  │   (FastAPI)  │  │   (1-3B)     │  │   (7-13B)     │    │
-│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘    │
-│         │                  │                  │            │
-│         └──────────────────┴──────────────────┘            │
-│                            │                               │
-│         ┌──────────────────┴──────────────────┐           │
-│         │                                      │           │
-│    ┌────▼────┐                          ┌────▼────┐      │
-│    │PostgreSQL│                          │  Redis  │      │
-│    │(Metrics) │                          │ (Cache) │      │
-│    └──────────┘                          └─────────┘      │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### LLM Decision Routing
-
-Decisions are routed to appropriate tiers:
-- **Tier 1** (83%): Routine decisions (next_action, tool_selection)
-- **Tier 2** (15%): Contextual decisions (prioritization, blocker resolution)
-- **Tier 3** (2%): Complex reasoning (reserved for future cloud LLM)
-
-## References
-
-- [EDDT Architecture Documentation](engineering-dept-digital-twin-architecture.md)
-- [Local LLM Architecture](eddt-local-llm-architecture.md)
-- [Deployment Guide](DEPLOYMENT.md)
+MIT

@@ -21,51 +21,27 @@ wheels/
 *.egg
 
 # Virtual environments
+.venv/
 venv/
-env/
 ENV/
-.venv
 
 # IDE
-.vscode/
 .idea/
+.vscode/
 *.swp
 *.swo
-*~
 
-# Environment
-.env
-.env.local
-
-# Database
-*.db
-*.sqlite
-*.sqlite3
-decision_cache.db
-
-# Models (large files)
-models/*.gguf
-models/*.bin
-models/*.safetensors
-
-# Logs
-*.log
-logs/
-
-# Docker
-.dockerignore
-
-# OS
-.DS_Store
-Thumbs.db
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
 
 # Testing
 .pytest_cache/
 .coverage
 htmlcov/
-.tox/
 
-# MyPy
-.mypy_cache/
-.dmypy.json
-dmypy.json
+# Output
+*.png
+*.csv
+*.log
+output/

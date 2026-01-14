@@ -1,0 +1,57 @@
+# What-if scenario: Add one more junior designer
+# Compare with baseline.yaml to see impact
+
+simulation:
+  start_date: "2025-01-15T08:00:00"
+  tick_minutes: 15
+  work_hours:
+    start: 8
+    end: 17
+
+agents:
+  - name: Alice
+    role: senior_designer
+    count: 1
+    skills: ["inventor_advanced", "vault", "simulation_basic"]
+
+  - name: Bob
+    role: junior_designer
+    count: 3  # Increased from 2 to 3
+    skills: ["inventor_basic", "vault_basic"]
+
+  - name: Carol
+    role: mechanical_engineer
+    count: 1
+    skills: ["inventor_advanced", "simulation", "fea"]
+
+  - name: Dave
+    role: reviewer
+    count: 1
+    skills: ["review", "markup", "standards"]
+
+projects:
+  - name: Enclosure Redesign
+    tasks:
+      - type: part_design
+        count: 8
+        hours: 6
+      - type: assembly
+        count: 2
+        hours: 12
+      - type: drawing
+        count: 8
+        hours: 3
+      - type: review
+        count: 2
+        hours: 4
+
+resources:
+  inventor_license: 5  # Need one more license
+  vault_connection: 10
+  reviewer: 1
+
+llm:
+  tier1_model: "qwen2.5:1.5b"
+  tier2_model: "qwen2.5:7b"
+  use_cache: true
+  use_llm: false

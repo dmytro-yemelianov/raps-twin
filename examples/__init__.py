@@ -1,1 +1,0 @@
-"""Example simulations for EDDT."""

@@ -1,0 +1,71 @@
+# High Lock Contention Scenario (T081)
+# Tests resource locking with 5 engineers competing for same assembly
+# Expected: Queue formation, blocked time visible in metrics
+
+name: Lock Contention Simulation
+
+simulation:
+  start_date: "2026-01-15T08:00:00"
+  tick_minutes: 15
+  work_hours:
+    start: 8
+    end: 17
+
+agents:
+  - name: Designer
+    role: senior_designer
+    count: 5
+    skill_level: middle
+    skills:
+      - inventor_advanced
+      - vault
+
+  - name: PLMAdmin
+    role: plm_admin
+    count: 1
+    skill_level: senior
+
+# CAD resources that require exclusive locks
+resources:
+  - name: MainAssembly.iam
+    lock_type: exclusive
+    references:
+      - PartA.ipt
+      - PartB.ipt
+      - PartC.ipt
+
+  - name: SharedDrawing.idw
+    lock_type: exclusive
+    references:
+      - MainAssembly.iam
+
+  - name: ReferenceLibrary
+    lock_type: read
+
+projects:
+  - name: Assembly Project
+    tasks:
+      # All 5 designers need access to MainAssembly
+      - type: assembly
+        count: 5
+        hours: 8
+        complexity: medium
+        resource: MainAssembly.iam
+
+      # Multiple tasks competing for drawing
+      - type: drawing
+        count: 3
+        hours: 4
+        complexity: simple
+        resource: SharedDrawing.idw
+
+      # Read-lock tasks can proceed in parallel
+      - type: part_design
+        count: 4
+        hours: 6
+        complexity: medium
+        resource: ReferenceLibrary
+
+llm:
+  use_llm: false
+  deterministic_mode: true

@@ -35,6 +35,14 @@ class TaskStatus(Enum):
     COMPLETED = "completed"
 
 
+class TaskComplexity(Enum):
+    """Task complexity levels affecting duration variance."""
+
+    SIMPLE = "simple"
+    MEDIUM = "medium"
+    COMPLEX = "complex"
+
+
 # Which roles can do which tasks
 TASK_ROLE_MAPPING = {
     TaskType.PART_DESIGN: ["junior_designer", "senior_designer", "mechanical_engineer"],
@@ -59,6 +67,9 @@ class Task:
     estimated_hours: float
     project: str
 
+    # Complexity for duration variance (Feature 005)
+    complexity: TaskComplexity = TaskComplexity.MEDIUM
+
     # State
     status: TaskStatus = TaskStatus.PENDING
     progress: float = 0.0  # 0.0 to 1.0
@@ -72,9 +83,16 @@ class Task:
     completed_at: Optional[datetime] = None
     review_cycles: int = 0
 
-    # Dependencies
+    # Dependencies (predecessors - explicit list per clarification)
+    predecessors: List[int] = field(default_factory=list)
     blocked_by: List[int] = field(default_factory=list)
     blocks: List[int] = field(default_factory=list)
+
+    # Resource locking (Feature 005)
+    resource: Optional[str] = None  # CAD file name for lock management
+
+    # Required skill level
+    required_skill_level: Optional[str] = None  # "junior", "middle", "senior"
 
     # APS artifacts (for integration scenarios)
     urn: Optional[str] = None
@@ -110,6 +128,25 @@ class Task:
     def is_complete(self) -> bool:
         """Check if task is complete."""
         return self.status == TaskStatus.COMPLETED or self.progress >= 1.0
+
+    def should_require_revision(self, rng, rejection_probability: float) -> bool:
+        """
+        Determine if this task requires revision based on review.
+
+        Args:
+            rng: Random number generator
+            rejection_probability: Probability of rejection (0.0 to 1.0)
+
+        Returns:
+            True if revision required, False if approved
+        """
+        return rng.random() < rejection_probability
+
+    def request_revision(self):
+        """Mark task for revision (rejected in review)."""
+        self.review_cycles += 1
+        self.progress = max(0.0, self.progress - 0.3)  # Rework ~30%
+        self.status = TaskStatus.IN_PROGRESS
 
     def __hash__(self):
         return hash(self.task_id)

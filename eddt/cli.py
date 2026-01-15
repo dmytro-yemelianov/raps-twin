@@ -11,7 +11,9 @@ from .model import EngineeringDepartment
 def main():
     """Main entry point for CLI."""
     parser = argparse.ArgumentParser(
-        description="EDDT: Engineering Department Digital Twin",
+        description="EDDT: Engineering Department Digital Twin\n\n"
+        "Simulates an engineering department with realistic task durations,\n"
+        "skill-based performance, resource locking, and LLM-assisted decisions.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -22,6 +24,10 @@ Examples:
 Comparison Examples:
   eddt --compare baseline.yaml add_designer.yaml --days 5
   eddt --compare a.yaml b.yaml c.yaml --labels "A" "B" "C" --export output/
+
+Estimation Examples:
+  eddt --estimate --config project.yaml --iterations 100
+  eddt --estimate --config project.yaml --export results/ --format json
         """,
     )
 
@@ -110,6 +116,27 @@ Comparison Examples:
         help="Directory to export comparison results (CSV/JSON)",
     )
 
+    # Estimation mode arguments (Feature 005 T077)
+    parser.add_argument(
+        "--estimate",
+        action="store_true",
+        help="Run Monte Carlo estimation for project timeline",
+    )
+    parser.add_argument(
+        "--iterations",
+        "-i",
+        type=int,
+        default=10,
+        help="Number of Monte Carlo iterations (default: 10)",
+    )
+    parser.add_argument(
+        "--format",
+        type=str,
+        choices=["text", "json", "csv"],
+        default="text",
+        help="Output format for estimation results (default: text)",
+    )
+
     args = parser.parse_args()
 
     # Handle comparison mode
@@ -119,6 +146,10 @@ Comparison Examples:
     # Handle what-if mode
     if args.whatif:
         return run_whatif_mode(args)
+
+    # Handle estimation mode (Feature 005 T077)
+    if args.estimate:
+        return run_estimation_mode(args)
 
     # Build config overrides
     config_overrides = None
@@ -351,6 +382,166 @@ def run_comparison_mode(args):
         print(f"\nResults exported to {output_dir}/")
         for f in csv_files + [json_file]:
             print(f"  - {Path(f).name}")
+
+    return result
+
+
+def run_estimation_mode(args):
+    """
+    Run EDDT in estimation mode (Feature 005 T077-T078).
+
+    Performs Monte Carlo simulation for project timeline estimation.
+    """
+    import json
+    import yaml
+
+    from .estimation import (
+        run_monte_carlo,
+        format_estimation_report,
+    )
+
+    print("=" * 60)
+    print("EDDT: Project Timeline Estimation Mode")
+    print("=" * 60)
+
+    # Load config
+    if args.config:
+        with open(args.config) as f:
+            config = yaml.safe_load(f)
+        config_name = Path(args.config).stem
+    else:
+        config = EngineeringDepartment()._default_config()
+        config_name = "default"
+
+    config["name"] = config_name
+
+    print(f"\nConfiguration: {config_name}")
+    print(f"Iterations: {args.iterations}")
+    print(f"Max days: {args.days}")
+    print(f"Base seed: {args.seed}")
+    print("\nRunning Monte Carlo simulation...")
+
+    # Run estimation
+    result = run_monte_carlo(
+        model_class=EngineeringDepartment,
+        config=config,
+        iterations=args.iterations,
+        days=args.days,
+        base_seed=args.seed,
+    )
+
+    # Output based on format
+    if args.format == "text":
+        print("\n" + format_estimation_report(result))
+
+    elif args.format == "json":
+        output = {
+            "config_name": result.config_name,
+            "iterations": result.iterations,
+            "seed": result.seed,
+            "generated_at": result.generated_at.isoformat(),
+            "summary": {
+                "mean_days": result.mean_days,
+                "std_days": result.std_days,
+                "min_days": result.min_days,
+                "max_days": result.max_days,
+            },
+            "confidence_intervals": {
+                "ci_80": {"low": result.ci_80_low, "high": result.ci_80_high},
+                "ci_95": {"low": result.ci_95_low, "high": result.ci_95_high},
+            },
+            "phases": [
+                {
+                    "name": p.phase_name,
+                    "mean_hours": p.mean_hours,
+                    "p80_hours": p.p80_hours,
+                    "task_count": p.task_count,
+                }
+                for p in result.phases
+            ],
+            "critical_path": [
+                {
+                    "task": c.task_name,
+                    "mean_duration": c.mean_duration,
+                    "variance": c.variance,
+                }
+                for c in result.critical_path
+            ],
+        }
+        print(json.dumps(output, indent=2))
+
+    elif args.format == "csv":
+        # Print CSV format
+        print("metric,value")
+        print(f"mean_days,{result.mean_days:.2f}")
+        print(f"std_days,{result.std_days:.2f}")
+        print(f"min_days,{result.min_days:.2f}")
+        print(f"max_days,{result.max_days:.2f}")
+        print(f"ci_80_low,{result.ci_80_low:.2f}")
+        print(f"ci_80_high,{result.ci_80_high:.2f}")
+        print(f"ci_95_low,{result.ci_95_low:.2f}")
+        print(f"ci_95_high,{result.ci_95_high:.2f}")
+
+    # Export if requested (T078)
+    if args.export:
+        import csv
+
+        output_dir = Path(args.export)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Export summary CSV
+        summary_path = output_dir / "estimation_summary.csv"
+        with open(summary_path, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["metric", "value"])
+            writer.writerow(["config_name", result.config_name])
+            writer.writerow(["iterations", result.iterations])
+            writer.writerow(["mean_days", f"{result.mean_days:.2f}"])
+            writer.writerow(["std_days", f"{result.std_days:.2f}"])
+            writer.writerow(["min_days", f"{result.min_days:.2f}"])
+            writer.writerow(["max_days", f"{result.max_days:.2f}"])
+            writer.writerow(["ci_80_low", f"{result.ci_80_low:.2f}"])
+            writer.writerow(["ci_80_high", f"{result.ci_80_high:.2f}"])
+            writer.writerow(["ci_95_low", f"{result.ci_95_low:.2f}"])
+            writer.writerow(["ci_95_high", f"{result.ci_95_high:.2f}"])
+            writer.writerow(["p80_recommendation", f"{result.p80_days:.2f}"])
+
+        # Export phases CSV
+        if result.phases:
+            phases_path = output_dir / "estimation_phases.csv"
+            with open(phases_path, "w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(["phase", "mean_hours", "p50_hours", "p80_hours", "p95_hours", "task_count"])
+                for phase in result.phases:
+                    writer.writerow([
+                        phase.phase_name,
+                        f"{phase.mean_hours:.2f}",
+                        f"{phase.p50_hours:.2f}",
+                        f"{phase.p80_hours:.2f}",
+                        f"{phase.p95_hours:.2f}",
+                        phase.task_count,
+                    ])
+
+        # Export JSON
+        json_path = output_dir / "estimation.json"
+        with open(json_path, "w") as f:
+            json.dump({
+                "config_name": result.config_name,
+                "iterations": result.iterations,
+                "seed": result.seed,
+                "generated_at": result.generated_at.isoformat(),
+                "mean_days": result.mean_days,
+                "std_days": result.std_days,
+                "ci_80": {"low": result.ci_80_low, "high": result.ci_80_high},
+                "ci_95": {"low": result.ci_95_low, "high": result.ci_95_high},
+                "p80_recommendation": result.p80_days,
+            }, f, indent=2)
+
+        print(f"\nResults exported to {output_dir}/")
+        print("  - estimation_summary.csv")
+        if result.phases:
+            print("  - estimation_phases.csv")
+        print("  - estimation.json")
 
     return result
 

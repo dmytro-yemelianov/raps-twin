@@ -1,0 +1,61 @@
+# All-Senior Team Scenario (T080)
+# Tests skill system with senior-only team
+# Expected: Lower duration multipliers, lower rejection rates, faster completion
+
+name: Senior Team Simulation
+
+simulation:
+  start_date: "2026-01-15T08:00:00"
+  tick_minutes: 15
+  work_hours:
+    start: 8
+    end: 17
+
+agents:
+  - name: Senior
+    role: senior_designer
+    count: 4
+    skill_level: senior
+    skills:
+      - inventor_advanced
+      - vault
+      - simulation_basic
+    specialization: assemblies
+
+  - name: SeniorEngineer
+    role: mechanical_engineer
+    count: 2
+    skill_level: senior
+    skills:
+      - inventor_advanced
+      - simulation
+      - fea
+    specialization: simulation
+
+projects:
+  - name: Widget Design Project
+    tasks:
+      - type: part_design
+        count: 6
+        hours: 4
+        complexity: simple
+      - type: part_design
+        count: 3
+        hours: 8
+        complexity: medium
+      - type: drawing
+        count: 5
+        hours: 3
+        complexity: simple
+      - type: assembly
+        count: 2
+        hours: 12
+        complexity: medium
+      - type: simulation
+        count: 2
+        hours: 16
+        complexity: complex
+
+llm:
+  use_llm: false
+  deterministic_mode: true

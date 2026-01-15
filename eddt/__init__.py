@@ -7,7 +7,12 @@ from .model import EngineeringDepartment, run_simulation
 from .agents import EngineerAgent, AgentStatus, EngineerRole
 from .tasks import Task, TaskStatus, TaskType
 from .resources import ToolResources
-from .llm import LLMDecisionMaker
+from .llm import (
+    LLMDecisionMaker,
+    DecisionContext,
+    TaskRecommendation,
+    DecisionCache,
+)
 from .metrics import MetricsCollector
 from .comparison import (
     compare_scenarios,
@@ -75,6 +80,42 @@ from .visualizations import (
     STATUS_COLORS,
     UTILIZATION_COLORS,
 )
+from .durations import (
+    TaskComplexity,
+    DurationDistribution,
+    TASK_BASE_DURATIONS,
+    COMPLEXITY_VARIANCE,
+    sample_duration,
+    create_duration_distribution,
+    get_base_duration,
+)
+from .skills import (
+    SkillLevel,
+    SKILL_MULTIPLIERS,
+    SKILL_ELIGIBILITY,
+    REVIEW_REJECTION_PROBABILITY,
+    get_duration_multiplier,
+    get_min_skill_for_task,
+    can_perform_task,
+    can_perform_task_with_penalty,
+    get_rejection_probability,
+    calculate_effective_multiplier,
+)
+from .locks import (
+    LockType,
+    LockEvent,
+    CADResource,
+    LockManager,
+)
+from .estimation import (
+    EstimationResult,
+    PhaseBreakdown,
+    CriticalPathItem,
+    run_monte_carlo,
+    calculate_confidence_interval,
+    identify_critical_path,
+    format_estimation_report,
+)
 
 __version__ = "0.1.0"
 __all__ = [
@@ -88,6 +129,9 @@ __all__ = [
     "TaskType",
     "ToolResources",
     "LLMDecisionMaker",
+    "DecisionContext",
+    "TaskRecommendation",
+    "DecisionCache",
     "MetricsCollector",
     # Comparison module
     "compare_scenarios",
@@ -150,4 +194,36 @@ __all__ = [
     "TASK_TYPE_COLORS",
     "STATUS_COLORS",
     "UTILIZATION_COLORS",
+    # Durations module
+    "TaskComplexity",
+    "DurationDistribution",
+    "TASK_BASE_DURATIONS",
+    "COMPLEXITY_VARIANCE",
+    "sample_duration",
+    "create_duration_distribution",
+    "get_base_duration",
+    # Skills module
+    "SkillLevel",
+    "SKILL_MULTIPLIERS",
+    "SKILL_ELIGIBILITY",
+    "REVIEW_REJECTION_PROBABILITY",
+    "get_duration_multiplier",
+    "get_min_skill_for_task",
+    "can_perform_task",
+    "can_perform_task_with_penalty",
+    "get_rejection_probability",
+    "calculate_effective_multiplier",
+    # Locks module
+    "LockType",
+    "LockEvent",
+    "CADResource",
+    "LockManager",
+    # Estimation module
+    "EstimationResult",
+    "PhaseBreakdown",
+    "CriticalPathItem",
+    "run_monte_carlo",
+    "calculate_confidence_interval",
+    "identify_critical_path",
+    "format_estimation_report",
 ]

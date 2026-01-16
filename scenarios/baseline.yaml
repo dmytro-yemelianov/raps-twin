@@ -1,6 +1,10 @@
-# Baseline scenario - typical engineering team
+# Baseline Scenario - Typical Engineering Team (T082 updated)
+# Demonstrates all Feature 005 capabilities: complexity, skill levels, resources
+
+name: Baseline Engineering Team
+
 simulation:
-  start_date: "2025-01-15T08:00:00"
+  start_date: "2026-01-15T08:00:00"
   tick_minutes: 15
   work_hours:
     start: 8
@@ -10,46 +14,98 @@ agents:
   - name: Alice
     role: senior_designer
     count: 1
-    skills: ["inventor_advanced", "vault", "simulation_basic"]
+    skill_level: senior
+    skills:
+      - inventor_advanced
+      - vault
+      - simulation_basic
+    specialization: assemblies
 
   - name: Bob
     role: junior_designer
     count: 2
-    skills: ["inventor_basic", "vault_basic"]
+    skill_level: junior
+    skills:
+      - inventor_basic
+      - vault_basic
 
   - name: Carol
     role: mechanical_engineer
     count: 1
-    skills: ["inventor_advanced", "simulation", "fea"]
+    skill_level: middle
+    skills:
+      - inventor_advanced
+      - simulation
+      - fea
+    specialization: simulation
 
   - name: Dave
     role: reviewer
     count: 1
-    skills: ["review", "markup", "standards"]
+    skill_level: senior
+    skills:
+      - review
+      - markup
+      - standards
+
+# CAD resources with lock types
+resources:
+  - name: MainAssembly.iam
+    lock_type: exclusive
+    references:
+      - EnclosurePart.ipt
+      - BracketPart.ipt
+
+  - name: EnclosurePart.ipt
+    lock_type: exclusive
+
+  - name: SharedLibrary
+    lock_type: read
 
 projects:
   - name: Enclosure Redesign
     tasks:
+      # Simple tasks for junior designers
       - type: part_design
-        count: 8
-        hours: 6
+        count: 4
+        hours: 4
+        complexity: simple
+
+      # Medium complexity tasks
+      - type: part_design
+        count: 4
+        hours: 8
+        complexity: medium
+        resource: EnclosurePart.ipt
+
+      # Complex assembly work
       - type: assembly
         count: 2
-        hours: 12
+        hours: 16
+        complexity: complex
+        resource: MainAssembly.iam
+
+      # Drawing tasks
       - type: drawing
         count: 8
         hours: 3
-      - type: review
-        count: 2
-        hours: 4
+        complexity: simple
 
-resources:
-  inventor_license: 4
-  vault_connection: 10
-  reviewer: 1
+      # Review tasks for senior reviewer
+      - type: review
+        count: 3
+        hours: 4
+        complexity: medium
+
+      # Simulation for engineer
+      - type: simulation
+        count: 1
+        hours: 20
+        complexity: complex
 
 llm:
   tier1_model: "qwen2.5:1.5b"
   tier2_model: "qwen2.5:7b"
   use_cache: true
   use_llm: false
+  deterministic_mode: true

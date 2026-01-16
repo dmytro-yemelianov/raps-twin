@@ -1,0 +1,53 @@
+# All-Junior Team Scenario (T079)
+# Tests skill system with junior-only team
+# Expected: Higher duration multipliers, higher rejection rates, longer completion time
+
+name: Junior Team Simulation
+
+simulation:
+  start_date: "2026-01-15T08:00:00"
+  tick_minutes: 15
+  work_hours:
+    start: 8
+    end: 17
+
+agents:
+  - name: Junior
+    role: junior_designer
+    count: 4
+    skill_level: junior
+    skills:
+      - inventor_basic
+      - vault_basic
+
+  - name: JuniorEngineer
+    role: mechanical_engineer
+    count: 2
+    skill_level: junior
+    skills:
+      - inventor_basic
+      - simulation_basic
+
+projects:
+  - name: Widget Design Project
+    tasks:
+      - type: part_design
+        count: 6
+        hours: 4
+        complexity: simple
+      - type: part_design
+        count: 3
+        hours: 8
+        complexity: medium
+      - type: drawing
+        count: 5
+        hours: 3
+        complexity: simple
+      - type: assembly
+        count: 2
+        hours: 12
+        complexity: medium
+
+llm:
+  use_llm: false
+  deterministic_mode: true

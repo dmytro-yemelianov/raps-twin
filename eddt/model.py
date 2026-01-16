@@ -12,10 +12,11 @@ from typing import Dict, List, Optional
 from pathlib import Path
 
 from .agents import EngineerAgent
-from .tasks import Task, TaskStatus, TaskType
+from .tasks import Task, TaskStatus, TaskType, TaskComplexity
 from .resources import ToolResources
 from .llm import LLMDecisionMaker
 from .metrics import MetricsCollector
+from .locks import LockManager, LockType
 
 
 class EngineeringDepartment(Model):
@@ -54,7 +55,12 @@ class EngineeringDepartment(Model):
         self.simpy_env = simpy.Environment()
 
         # Tool resources (translation queue, review capacity, etc.)
-        self.resources = ToolResources(self.simpy_env, self.config.get("resources", {}))
+        # Note: resources can be a list (lock-based) or dict (capacity-based)
+        resources_config = self.config.get("resources", {})
+        if isinstance(resources_config, list):
+            # Lock-based resources use a different structure, pass empty dict
+            resources_config = {}
+        self.resources = ToolResources(self.simpy_env, resources_config)
 
         # LLM for agent decisions
         llm_config = self.config.get("llm", {})
@@ -71,6 +77,10 @@ class EngineeringDepartment(Model):
         # Create initial tasks/projects
         self.tasks: Dict[int, Task] = {}
         self._create_tasks()
+
+        # Feature 005: Lock manager for resource contention
+        self.lock_manager = LockManager(self)
+        self._create_resources()
 
         # Metrics collection
         self.metrics = MetricsCollector()
@@ -139,6 +149,8 @@ class EngineeringDepartment(Model):
                     name=name,
                     role=agent_config["role"],
                     skills=agent_config.get("skills", []),
+                    skill_level=agent_config.get("skill_level", "middle"),
+                    specialization=agent_config.get("specialization"),
                 )
 
         print(f"Created {len(self.agents)} agents")
@@ -150,17 +162,43 @@ class EngineeringDepartment(Model):
             project_name = project["name"]
             for task_config in project.get("tasks", []):
                 for i in range(task_config.get("count", 1)):
+                    # Parse complexity if provided
+                    complexity_str = task_config.get("complexity", "medium")
+                    try:
+                        complexity = TaskComplexity(complexity_str)
+                    except ValueError:
+                        complexity = TaskComplexity.MEDIUM
+
                     task = Task(
                         task_id=task_id,
                         name=f"{project_name}: {task_config['type']} #{i+1}",
                         task_type=TaskType(task_config["type"]),
                         estimated_hours=task_config["hours"],
                         project=project_name,
+                        complexity=complexity,
+                        resource=task_config.get("resource"),
+                        required_skill_level=task_config.get("required_skill_level"),
+                        predecessors=task_config.get("predecessors", []),
                     )
                     self.tasks[task_id] = task
                     task_id += 1
 
         print(f"Created {task_id} tasks")
+
+    def _create_resources(self):
+        """Create CAD resources from configuration for lock management."""
+        for resource_config in self.config.get("resources", []):
+            lock_type_str = resource_config.get("lock_type", "exclusive")
+            try:
+                lock_type = LockType(lock_type_str)
+            except ValueError:
+                lock_type = LockType.EXCLUSIVE
+
+            self.lock_manager.register_resource(
+                name=resource_config["name"],
+                lock_type=lock_type,
+                references=resource_config.get("references", []),
+            )
 
     def is_working_hours(self) -> bool:
         """Check if current simulation time is within working hours."""
@@ -169,11 +207,27 @@ class EngineeringDepartment(Model):
         return weekday < 5 and self.work_start <= hour < self.work_end  # Monday-Friday
 
     def get_available_tasks(self, agent: EngineerAgent) -> List[Task]:
-        """Get tasks that can be assigned to an agent based on their role."""
+        """
+        Get tasks that can be assigned to an agent based on their role.
+
+        Feature 005 (T066): Tasks are sorted by specialization preference.
+        """
         available = []
         for task in self.tasks.values():
             if task.status == TaskStatus.PENDING and task.can_be_done_by(agent.role):
                 available.append(task)
+
+        # Sort by specialization preference (T066)
+        if agent.specialization:
+            available.sort(
+                key=lambda t: (
+                    # Prefer tasks matching specialization
+                    0 if agent.specialization.lower() in t.task_type.value.lower() else 1,
+                    # Secondary: prefer simpler tasks for lower skill levels
+                    0 if t.complexity.value == "simple" else (1 if t.complexity.value == "medium" else 2),
+                )
+            )
+
         return available
 
     def step(self):

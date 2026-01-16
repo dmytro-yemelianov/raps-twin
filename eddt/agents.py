@@ -11,6 +11,10 @@ if TYPE_CHECKING:
     from .model import EngineeringDepartment
     from .tasks import Task, TaskType
 
+from .skills import SkillLevel, get_duration_multiplier, calculate_effective_multiplier
+from .durations import sample_duration, TaskComplexity
+from .llm import DecisionContext
+
 
 class AgentStatus(Enum):
     """Agent state machine states."""
@@ -76,12 +80,18 @@ class EngineerAgent(Agent):
         name: str,
         role: str,
         skills: List[str] = None,
+        skill_level: str = "middle",
+        specialization: str = None,
     ):
         super().__init__(model)
 
         self.name = name
         self.role = EngineerRole(role)
         self.skills = skills or self._default_skills()
+
+        # Feature 005: Skill level and specialization
+        self.skill_level = SkillLevel(skill_level)
+        self.specialization = specialization  # Preferred task type
 
         # State
         self.status = AgentStatus.IDLE
@@ -211,10 +221,10 @@ class EngineerAgent(Agent):
             if task_id is not None:
                 self._start_task(task_id)
             else:
-                # Pick from available
-                available = self.model.get_available_tasks(self)
-                if available:
-                    self._start_task(available[0].task_id)
+                # Use LLM-assisted task selection (Feature 005 T059)
+                task = self._select_best_task()
+                if task:
+                    self._start_task(task.task_id)
 
         elif action == "complete_task":
             # Mark current task as done
@@ -241,27 +251,60 @@ class EngineerAgent(Agent):
         self.memory.add_action(f"{action}: {decision.get('reason', '')}"[:50])
 
     def _work_on_task(self):
-        """Make progress on current task."""
+        """Make progress on current task using realistic duration sampling."""
         if not self.current_task:
             return
 
-        # Calculate progress based on skill and task complexity
-        skill_factor = self._get_skill_factor(self.current_task.task_type)
-        base_progress = 0.25 / self.current_task.estimated_hours  # 15 min tick
-        actual_progress = base_progress * skill_factor
+        # Feature 005: Use sampled duration if not already calculated
+        if not hasattr(self.current_task, "_sampled_duration") or self.current_task._sampled_duration is None:
+            self._sample_task_duration()
 
-        # Apply randomness from model's RNG
-        variance = self.model.random.uniform(0.8, 1.2)
-        actual_progress *= variance
+        # Get sampled duration (falls back to estimated if not set)
+        sampled_duration = getattr(self.current_task, "_sampled_duration", None)
+        effective_duration = sampled_duration if sampled_duration else self.current_task.estimated_hours
+
+        # Calculate progress based on effective duration
+        # 15 min tick = 0.25 hours
+        base_progress = 0.25 / effective_duration
 
         # Apply progress
-        self.current_task.add_progress(actual_progress)
+        self.current_task.add_progress(base_progress)
         self.hours_worked_today += 0.25
         self.hours_worked_total += 0.25
 
         # Check if complete
         if self.current_task.progress >= 1.0:
             self._complete_task()
+
+    def _sample_task_duration(self):
+        """Sample a realistic duration for the current task."""
+        if not self.current_task:
+            return
+
+        # Get complexity from task (default to MEDIUM)
+        complexity = getattr(self.current_task, "complexity", None)
+        if complexity is None:
+            complexity = TaskComplexity.MEDIUM
+
+        # Calculate skill multiplier with potential mismatch penalty
+        multiplier, has_penalty = calculate_effective_multiplier(
+            self.skill_level,
+            self.current_task.task_type.value,
+        )
+
+        # Store penalty flag for review rejection probability
+        self.current_task._has_skill_penalty = has_penalty
+
+        # Sample duration using log-normal distribution
+        sampled = sample_duration(
+            task_type=self.current_task.task_type.value,
+            complexity=complexity,
+            rng=self.model.random,
+            skill_multiplier=multiplier,
+        )
+
+        # Store on task for consistent progress calculation
+        self.current_task._sampled_duration = sampled
 
     def _get_skill_factor(self, task_type: "TaskType") -> float:
         """Get efficiency multiplier based on skills."""
@@ -270,6 +313,66 @@ class EngineerAgent(Agent):
             if skill_required in skill:
                 return 1.2 if "advanced" in skill else 1.0
         return 0.8  # No matching skill = slower
+
+    def _select_best_task(self) -> Optional["Task"]:
+        """
+        Select the best task using LLM-assisted decision making (Feature 005 T059).
+
+        Uses the LLM's task prioritization with fallback to rule-based selection.
+        """
+        available = self.model.get_available_tasks(self)
+        if not available:
+            return None
+
+        # Build decision context for LLM
+        context = DecisionContext(
+            agent_name=self.name,
+            agent_role=self.role.value,
+            agent_skill_level=self.skill_level.value,
+            available_tasks=[
+                {
+                    "id": t.task_id,
+                    "name": t.name,
+                    "type": t.task_type.value,
+                    "complexity": t.complexity.value if hasattr(t, "complexity") else "medium",
+                    "resource": getattr(t, "resource", None),
+                }
+                for t in available
+            ],
+            blocked_resources=self._get_blocked_resources(),
+            is_blocked=self.status == AgentStatus.BLOCKED,
+            blocked_duration_hours=self._blocked_duration_hours(),
+        )
+
+        # Consult LLM for task recommendations
+        recommendations = self.model.llm.consult_llm_for_task(self, context)
+
+        if recommendations:
+            # Get the top recommendation
+            best = recommendations[0]
+            # Find the task by ID
+            for task in available:
+                if task.task_id == best.task_id:
+                    return task
+
+        # Fallback to first available
+        return available[0] if available else None
+
+    def _get_blocked_resources(self) -> List[str]:
+        """Get list of currently blocked resources."""
+        blocked = []
+        if hasattr(self.model, "lock_manager"):
+            for res_name, resource in self.model.lock_manager.resources.items():
+                if resource.is_locked and resource.holder != self.name:
+                    blocked.append(res_name)
+        return blocked
+
+    def _blocked_duration_hours(self) -> float:
+        """Get blocked duration in hours as float."""
+        if not self.blocked_since:
+            return 0.0
+        duration = self.model.current_time - self.blocked_since
+        return duration.total_seconds() / 3600
 
     def _start_task(self, task_id: int):
         """Start working on a task."""

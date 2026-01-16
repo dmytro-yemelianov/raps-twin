@@ -117,7 +117,7 @@ from .estimation import (
     format_estimation_report,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __all__ = [
     "EngineeringDepartment",
     "run_simulation",
